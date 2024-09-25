@@ -20,3 +20,4 @@ class StoreLocatorsItem(scrapy.Item):
     country = scrapy.Field()
     status = scrapy.Field()
     direction_url = scrapy.Field()
+

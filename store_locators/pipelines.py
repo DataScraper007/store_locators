@@ -15,7 +15,7 @@ class StoreLocatorsPipeline:
         self.db_params = db_params
 
         # Establish a database connection
-        self.connection = pymysql.connect(**self.db_params)
+        self.connection = pymysql.connect(**self.db_params, autocommit=True)
         self.cursor = self.connection.cursor()
 
     def open_spider(self, spider):
@@ -55,12 +55,15 @@ class StoreLocatorsPipeline:
         # Extract the fields from the item dict
         fields = ', '.join(item.keys())
         placeholders = ', '.join(['%s'] * len(item))
+        try:
+            # Insert query with dynamic fields and placeholders
+            insert_query = f"INSERT INTO {spider.name}_{datetime.now().strftime('%Y%m%d')} ({fields}) VALUES ({placeholders})"
 
-        # Insert query with dynamic fields and placeholders
-        insert_query = f"INSERT IGNORE INTO {spider.name}_{datetime.now().strftime('%Y%m%d')} ({fields}) VALUES ({placeholders})"
+            # Execute the query with values directly from the item
+            self.cursor.execute(insert_query, list(item.values()))
+            self.connection.commit()
+            print("Data Inserted")
 
-        # Execute the query with values directly from the item
-        self.cursor.execute(insert_query, list(item.values()))
-        self.connection.commit()
-
-        return item
+            return item
+        except Exception as e:
+            print(e)

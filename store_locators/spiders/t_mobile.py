@@ -2,8 +2,9 @@ import gzip
 import os
 from datetime import datetime
 import json
+
+import pymysql
 import scrapy
-from scrapy import Request
 from scrapy.cmdline import execute
 
 from store_locators.items import StoreLocatorsItem
@@ -13,14 +14,23 @@ class TMobileSpider(scrapy.Spider):
     name = "t_mobile"
 
     def __init__(self):
+        db_params = {
+            'host': 'localhost',
+            'user': 'root',
+            'password': 'actowiz',
+            'db': 'store_locators'
+        }
         super().__init__()
         self.cookies = None
         self.headers = None
         self.datetime = datetime.now().strftime('%Y%m%d')
         self.page_save = fr"C:\Users\Admin\PycharmProjects\page_save\store_locators\{self.datetime}\{TMobileSpider.name}"
 
-    def start_requests(self):
+        self.conn = pymysql.connect(**db_params)
+        self.cur = self.conn.cursor()
 
+    def start_requests(self):
+        self.cur.execute("SELECT short_name, lat, `long`, state FROM lat_long")
         self.cookies = {
             'TFPIDS': '90095dee-37b4-4484-8c4b-f4359526c6e4',
             'TFPID': '90095dee-37b4-4484-8c4b-f4359526c6e4',
@@ -85,51 +95,36 @@ class TMobileSpider(scrapy.Spider):
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
             'x-csrftoken': 'null',
         }
-        locations = [
-            {
-                # "loc": "Montana,+United+States",
-                "lat": 47.072515,
-                "lon": -109.172599,
-                "state": "MT"
-            },
-            {
-                # "loc": "Mississippi,+United+States",
-                "lat": 32.856674,
-                "lon": -89.718168,
-                "state": "MS"
-            },
-            {
-                # "loc": "Indiana,+United+States",
-                "lat": 39.918408,
-                "lon": -86.284608,
-                "state": "IN"
-            }
-        ]
+
+        locations = self.cur.fetchall()
         for location in locations:
+            state, lat, long, loc = location
+            print("=============================", state)
             yield scrapy.Request(
                 # url=f"https://www.t-mobile.com/stores/api/get-nearby-business/?q=&loc={location['loc']}&lat={location['lat']}&lon={location['lon']}",
-                url=f"https://www.t-mobile.com/stores/api/get-nearby-business/?q=&lat={location['lat']}&lon={location['lon']}",
+                url=f"https://www.t-mobile.com/stores/api/get-nearby-business/?q=&loc={loc}&lat={lat}&lon={long}",
                 headers=self.headers,
                 cookies=self.cookies,
                 callback=self.parse,
-                cb_kwargs={"current_page": 1, "location": location}
+                cb_kwargs={"current_page": 1, "lat": lat, "long": long, "state": state, 'loc': loc}
             )
 
     def parse(self, response, **kwargs):
         json_data = json.loads(response.text)
-        file_path = self.page_save + '\\' + kwargs['location']['state'] + ".html.gz"
+        file_path = self.page_save + '\\' + kwargs['state'] + ".html.gz"
+
         if not os.path.exists(self.page_save):
             os.makedirs(self.page_save)
         with gzip.open(file_path, 'wb') as file:
             file.write(response.body)
 
         product_data = json_data.get('business_list', {}).get('object_list', {})
-        location = kwargs['location']
+
         item = StoreLocatorsItem()
         if product_data:
             for data in product_data:
                 item['state'] = data['locale']['region']['state']
-                if item['state'] == location['state']:
+                if item['state'] == kwargs['state']:
                     item['store_id'] = data['external_store_code']
                     item['name'] = data['display_name']
                     item['latitude'] = data['lat']
@@ -141,25 +136,26 @@ class TMobileSpider(scrapy.Spider):
                     item['county'] = ''
                     item['phone'] = data['contact_context']['business_phone_raw']
                     item['open_hours'] = " | ".join(data['all_opening_hours']['schemaHrs'])
-                    item['url'] = "https://www.t-mobile.com" + data['business_link']
+                    item['url'] = "https://www.t-mobile.com" + data['business_link'] if data['business_link'] else ''
                     item['provider'] = "T-Mobile"
                     item['category'] = "Computer And Electronics Stores"
                     item['updated_date'] = datetime.today().strftime('%d-%m-%Y')
                     item['status'] = 'Open' if data['all_opening_hours']['isOpen'] == True else 'Closed'
                     item['direction_url'] = data['get_directions_link']
-
                     yield item
 
             total_pages = json_data['business_list']['paginator']['num_pages']
             next_page = kwargs['current_page'] + 1 if total_pages >= (kwargs['current_page'] + 1) else None
+
             if next_page:
                 yield scrapy.Request(
                     # url=f"https://www.t-mobile.com/stores/api/get-nearby-business/?q=&loc={location['loc']}&lat={location['lat']}&lon={location['lon']}&page={next_page}",
-                    url=f"https://www.t-mobile.com/stores/api/get-nearby-business/?q=&lat={location['lat']}&lon={location['lon']}&page={next_page}",
+                    url=f"https://www.t-mobile.com/stores/api/get-nearby-business/?q=&lat={kwargs['lat']}&lon={kwargs['long']}&page={next_page}",
                     headers=self.headers,
                     cookies=self.cookies,
                     callback=self.parse,
-                    cb_kwargs={"current_page": next_page, "location": location}
+                    cb_kwargs={"current_page": next_page, "lat": kwargs['lat'], "long": kwargs['long'],
+                               "state": kwargs['state'], 'loc': kwargs['loc']}
                 )
 
 
