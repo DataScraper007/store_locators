@@ -100,12 +100,11 @@ class FreightlinerSpider(scrapy.Spider):
                         if type['name'] == 'Sales':
                             item['open_hours'] = self.format_hours(type['schedule'])
                             break
-                    else:
-                        return
-                            # if type['type'] == 'Parts':
-                            #     item['open_hours'] = self.format_hours(type['schedule'])
-                            # else:
-                            #     item['open_hours'] = self.format_hours(type['schedule'])
+                        else:
+                            if type['type'] == 'Parts':
+                                item['open_hours'] = self.format_hours(type['schedule'])
+                            else:
+                                item['open_hours'] = self.format_hours(type['schedule'])
 
                     item['url'] = f"https://www.freightliner.com/Dealer?code={data['code']}&name={data['name']}"
                     item['provider'] = "Freightliner"
