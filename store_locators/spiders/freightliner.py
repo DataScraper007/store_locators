@@ -95,27 +95,28 @@ class FreightlinerSpider(scrapy.Spider):
                     item['phone'] = data['phone']
 
                     # Convert data to the desired format
-                    item['open_hours'] = ''
+                    # item['open_hours'] = ''
                     for type in data['departments']:
                         if type['name'] == 'Sales':
                             item['open_hours'] = self.format_hours(type['schedule'])
                             break
-                        else:
-                            if type['type'] == 'Parts':
-                                item['open_hours'] = self.format_hours(type['schedule'])
-                            else:
-                                item['open_hours'] = self.format_hours(type['schedule'])
+                    else:
+                        return
+                            # if type['type'] == 'Parts':
+                            #     item['open_hours'] = self.format_hours(type['schedule'])
+                            # else:
+                            #     item['open_hours'] = self.format_hours(type['schedule'])
 
                     item['url'] = f"https://www.freightliner.com/Dealer?code={data['code']}&name={data['name']}"
                     item['provider'] = "Freightliner"
                     item['category'] = "Automobile Dealers"
                     item['updated_date'] = datetime.today().strftime('%d-%m-%Y')
-                    if item['open_hours']:
+                    if item.get('open_hours'):
                         item['status'] = 'Open' if self.parse_hours(item['open_hours']) else 'Closed'
                     else:
                         item['status'] = 'Closed'
                     item['direction_url'] = self.format_direction_url(data)
-                    print(item)
+                    yield item
 
     def parse_hours(self, hours_string):
         # Split the string into days and times
